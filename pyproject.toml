@@ -1,0 +1,14 @@
+[project]
+name = "sf-marimo-streaming"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "marimo>=0.17.6",
+    "matplotlib>=3.9.4",
+    "opencv-python>=5.0.0.93",
+    "pyqt6>=6.10.2",
+    "python-pptx>=1.0.2",
+    "scopefoundry>=2.3.0",
+]
