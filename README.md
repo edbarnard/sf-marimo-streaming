@@ -1,6 +1,6 @@
 # ScopeFoundry → ZeroMQ → Marimo: Live Instrument Streaming & LLM-Assisted Analysis
 
-A prototype demonstrating **real-time instrument data streaming** from a [ScopeFoundry](https://www.scopefoundry.org/) hardware application over **ZeroMQ (`PUB`/`SUB`)** into an interactive, reactive **[Marimo](https://marimo.io/) notebook**—where a user (and an LLM agent pairing live via `marimo._code_mode`) can build, modify, and tune live visualizations on the fly to make informed experimental decisions without interrupting data acquisition.
+A prototype demonstrating **real-time instrument data streaming** from a [ScopeFoundry](https://www.scopefoundry.org/) hardware application over **ZeroMQ (`PUB`/`SUB`)** into an interactive, reactive **[Marimo](https://marimo.io/) notebook**—where a user (and an LLM agent pairing live via `marimo._code_mode`) can build, modify, and tune live visualizations on the fly to make informed experimental decisions without interrupting data acquisition. This demo uses your webcam as stream of numerical data that you can analyze live.
 
 ![System Architecture Overview](docs/images/architecture_overview.svg)
 
@@ -16,6 +16,14 @@ By decoupling acquisition from exploratory analysis:
 2. **Reactive Live Visualization (Marimo)**: [`red_channel_viewer.py`](red_channel_viewer.py) subscribes to the ZMQ stream and models the analysis pipeline as a **Directed Acyclic Graph (DAG)** of reactive Python cells. Editing any downstream processing step immediately updates its visual output on the next incoming frame without restarting the camera or losing state.
 3. **Live LLM Co-Pilot (`marimo-pair`)**: Because Marimo maintains a live Python kernel with a structured dataflow graph and programmatic code-mode API (`marimo._code_mode`), an LLM agent can inspect live variables, diagnose UI issues, and hot-insert new analysis cells directly into the running notebook while the user watches the stream update in real time.
 
+> [!NOTE]
+> **Beyond Webcams — Applicable to Any Live Scientific Data Stream**
+> While this repository uses a standard webcam (`cv2.VideoCapture`) as a self-contained, zero-hardware-setup demo, the ZeroMQ multipart `[topic, metadata_json, raw_ndarray_bytes]` protocol transports arbitrary `numpy.ndarray` payloads and metadata. The exact same ScopeFoundry → ZeroMQ → Marimo + LLM workflow can be dropped into real laboratory instruments to stream and analyze:
+> - **Microscopy & Scientific Imaging**: sCMOS/EMCCD fluorescence cameras, laser-scanning confocal frames, electron microscopy (SEM/TEM) feeds, or phase-contrast video.
+> - **Optical Spectroscopy**: Live 1D/2D spectra from CCD/InGaAs spectrometers (Raman, photoluminescence, absorption/transmission, or streak cameras) for real-time peak fitting, background subtraction, and spectral integration.
+> - **Hyperspectral & Scanning Probe Maps**: Point-by-point or line-by-line raster scan updates ( AFM, photocurrent, or lifetime mapping).
+> - **Time-Series & Multi-Channel Detector Readouts**: Photon counter traces, lock-in amplifier channels, DAQ waveforms, or environmental sensor telemetry.
+
 ---
 
 ## End-to-End Dataflow & Wire Protocol
@@ -24,6 +32,8 @@ By decoupling acquisition from exploratory analysis:
 
 ### 1. ScopeFoundry Publisher ([`webcam_zmq_hw.py`](webcam_zmq_hw.py))
 When `webcam_zmq` is connected in ScopeFoundry, its background `threaded_update()` loop captures frames via OpenCV (`cv2.VideoCapture`), converts to the selected color space (`RGB`, `BGR`, or `GRAY`), and publishes a **3-part zero-copy multipart message** on `tcp://*:5556`:
+
+![ScopeFoundry WebcamStreamApp Live GUI](docs/images/scopfoundry-screenshot.jpg)
 
 ```python
 self.pub_socket.send_multipart(
@@ -66,10 +76,15 @@ flowchart LR
   - Triggered by `mo.ui.refresh` (`default_interval="0.5s"`).
   - Extracts `red_channel = frame[:, :, 0]` (for `RGB`) and encodes images as inline `data:image/jpeg;base64,...` URIs rather than raw bytes (avoiding Marimo's `/@file/...` virtual file HTTP round-trip that causes browser image flicker).
   - Supports **Red-tinted `(R, 0, 0)`**, **Grayscale intensity**, and **Side-by-side `(Original + Red)`** views.
+
+  ![Marimo Notebook Live Red Channel Stream](docs/images/marimo-notebook-screenshot.jpg)
+
 - **Cell `fXKi` (Adaptive Edge Detection)**:
   - Smooths sensor noise with `cv2.GaussianBlur(red_channel, (5, 5), 1.2)`.
   - Computes automatic median-based Canny thresholds (`0.66 * median`, `1.33 * median`) alongside a continuous `cv2.Sobel` gradient magnitude map and a cyan edge overlay on the red channel.
   - Reports real-time **Edge Pixels %** and **Mean Gradient** (useful as live focus/alignment metrics).
+
+  ![Marimo Live Edge Detection on Red Channel](docs/images/edge-detection-screenshot.jpg)
 - **Cell `dblj` (Live 256-Bin SVG Intensity Histogram)**:
   - Computes 8-bit pixel distributions via `np.bincount(red_channel.ravel(), minlength=256)` plus Green/Blue reference curves.
   - Renders directly as an inline vector `<svg>` via `mo.Html(...)` with **P10**, **Median (P50)**, **P90**, and **Std Dev** readouts—updating in sub-millisecond time with zero flicker.
